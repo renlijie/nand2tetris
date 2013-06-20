@@ -1,0 +1,19 @@
+// This file is part of www.nand2tetris.org
+// and the book "The Elements of Computing Systems"
+// by Nisan and Schocken, MIT Press.
+// File name: projects/02/Or16Way.hdl
+
+/**
+ * 16-way or gate: out = in[0] or in[1] or ... or in[15].
+ */
+
+CHIP Or16Way {
+    IN in[16];
+    OUT out;
+
+    PARTS:
+    // Put your code here:
+    Or8Way(in=in[0..7], out=first);
+    Or8Way(in=in[8..15], out=second);
+    Or(a=first, b=second, out=out);
+}
