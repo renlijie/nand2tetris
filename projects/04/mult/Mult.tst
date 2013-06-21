@@ -6,7 +6,7 @@
 load Mult.hack,
 output-file Mult.out,
 compare-to Mult.cmp,
-output-list RAM[2]%D2.6.2;
+output-list RAM[0]%D2.6.2 RAM[1]%D2.6.2 RAM[2]%D2.6.2;
 
 set RAM[0] 0,
 set RAM[1] 0;
