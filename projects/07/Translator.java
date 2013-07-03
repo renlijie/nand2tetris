@@ -49,6 +49,27 @@ class Translator {
     .append("M=!M\n")
     .toString();
 
+  private static final String PUSH = new StringBuilder()
+    .append("D=A\n")
+    .append("@SP\n")
+    .append("A=M\n")
+    .append("M=D\n")
+    .append("@SP\n")
+    .append("M=M+1\n")
+    .toString();
+
+  private static final String POP = new StringBuilder()
+    .append("D=A\n")
+    .append("@R13\n")
+    .append("M=D\n")
+    .append("@SP\n")
+    .append("AM=M-1\n")
+    .append("D=M\n")
+    .append("@R13\n")
+    .append("A=M\n")
+    .append("M=D\n")
+    .toString();
+
   private static int count = 0;
 
   private String nextCount() {
@@ -128,15 +149,6 @@ class Translator {
     return s;
   }
 
-  private static final String PUSH_CONST = new StringBuilder()
-    .append("D=A\n")
-    .append("@SP\n")
-    .append("A=M\n")
-    .append("M=D\n")
-    .append("@SP\n")
-    .append("M=M+1\n")
-    .toString();
-
   public Translator(String file) {
 		try {
 			br = new BufferedReader(new FileReader(file));
@@ -146,7 +158,7 @@ class Translator {
     return;
   }
 
-  public String parseNextCommand() throws Exception {
+  private String parseNextCommand() throws Exception {
     String s = nextCommand();
     if (s == null)
       return null;
@@ -179,32 +191,143 @@ class Translator {
         return NOT;
       }
       default: {
-        return parsePush(s);
+        String[] parts = s.split(" ");
+        if (parts.length == 0)
+          throw new Exception("bad command!");
+        switch (parts[0]) {
+          case "push": return parsePush(parts[1], parts[2]);
+          case "pop": return parsePop(parts[1], parts[2]);
+          default: throw new Exception("bad command!");
+        }
       }
     }
   }
 
-  public String parsePush(String s) throws Exception{
-    String[] parts = s.split(" ");
-    if (parts.length == 0)
-      throw new Exception("bad command!");
-    switch (parts[0]) {
-      case "push": {
-        switch (parts[1]) {
-          case "constant": {
-            return new StringBuilder()
-              .append("@").append(parts[2]).append("\n")
-              .append(PUSH_CONST)
-              .toString();
-          }
-          default: throw new Exception("bad command!");
-        }
+  private String parsePop(String base, String idx) throws Exception{
+    String suffix = new StringBuilder()
+          .append("D=M\n")
+          .append("@").append(idx).append("\n")
+          .append("A=D+A\n")
+          .append(POP)
+          .toString();
+    switch (base) {
+      case "local": {
+        return new StringBuilder()
+          .append("@LCL\n")
+          .append(suffix)
+          .toString();
+      }
+      case "argument": {
+        return new StringBuilder()
+          .append("@ARG\n")
+          .append(suffix)
+          .toString();
+      }
+      case "this": {
+        return new StringBuilder()
+          .append("@THIS\n")
+          .append(suffix)
+          .toString();
+      }
+      case "that": {
+        return new StringBuilder()
+          .append("@THAT\n")
+          .append(suffix)
+          .toString();
+      }
+      case "pointer": {
+        if (idx.equals("0"))
+          return new StringBuilder()
+            .append("@THIS\n")
+            .append(POP)
+            .toString();
+        else
+          return new StringBuilder()
+            .append("@THAT\n")
+            .append(POP)
+            .toString();
+      }
+      case "temp": {
+        return new StringBuilder()
+          .append("@R5\n")
+          .append("D=A\n")
+          .append("@").append(idx).append("\n")
+          .append("A=D+A\n")
+          .append(POP)
+          .toString();
       }
       default: throw new Exception("bad command!");
     }
   }
 
-  public String nextCommand() throws IOException {
+  private String parsePush(String base, String idx) throws Exception{
+    String suffix = new StringBuilder()
+          .append("D=M\n")
+          .append("@").append(idx).append("\n")
+          .append("A=D+A\n")
+          .append("A=M\n")
+          .append(PUSH)
+          .toString();
+    switch (base) {
+      case "constant": {
+        return new StringBuilder()
+          .append("@").append(idx).append("\n")
+          .append(PUSH)
+          .toString();
+      }
+      case "local": {
+        return new StringBuilder()
+          .append("@LCL\n")
+          .append(suffix)
+          .toString();
+      }
+      case "argument": {
+        return new StringBuilder()
+          .append("@ARG\n")
+          .append(suffix)
+          .toString();
+      }
+      case "this": {
+        return new StringBuilder()
+          .append("@THIS\n")
+          .append(suffix)
+          .toString();
+      }
+      case "that": {
+        return new StringBuilder()
+          .append("@THAT\n")
+          .append(suffix)
+          .toString();
+      }
+      case "pointer": {
+        if (idx.equals("0"))
+          return new StringBuilder()
+            .append("@THIS\n")
+            .append("A=M\n")
+            .append(PUSH)
+            .toString();
+        else
+          return new StringBuilder()
+            .append("@THAT\n")
+            .append("A=M\n")
+            .append(PUSH)
+            .toString();
+      }
+      case "temp": {
+        return new StringBuilder()
+          .append("@R5\n")
+          .append("D=A\n")
+          .append("@").append(idx).append("\n")
+          .append("A=D+A\n")
+          .append("A=M\n")
+          .append(PUSH)
+          .toString();
+      }
+      default: throw new Exception("bad command!");
+    }
+  }
+
+  private String nextCommand() throws IOException {
     String line;
     while(true) {
       line = br.readLine();
