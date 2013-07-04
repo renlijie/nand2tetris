@@ -4,6 +4,7 @@ import java.io.IOException;
 
 class Translator {
   private BufferedReader br;
+  private String fileName;
 
   private static final String ADD = new StringBuilder()
     .append("@SP\n")
@@ -150,6 +151,7 @@ class Translator {
   }
 
   public Translator(String file) {
+    fileName = file.replaceAll(".*/", "");
 		try {
 			br = new BufferedReader(new FileReader(file));
 		} catch (Exception e) {
@@ -211,6 +213,12 @@ class Translator {
           .append(POP)
           .toString();
     switch (base) {
+      case "static": {
+        return new StringBuilder()
+          .append("@").append(fileName).append(".").append(idx).append("\n")
+          .append(suffix)
+          .toString();
+      }
       case "local": {
         return new StringBuilder()
           .append("@LCL\n")
@@ -269,6 +277,12 @@ class Translator {
           .append(PUSH)
           .toString();
     switch (base) {
+      case "static": {
+        return new StringBuilder()
+          .append("@").append(fileName).append(".").append(idx).append("\n")
+          .append(suffix)
+          .toString();
+      }
       case "constant": {
         return new StringBuilder()
           .append("@").append(idx).append("\n")
