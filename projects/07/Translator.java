@@ -150,6 +150,25 @@ class Translator {
     return s;
   }
 
+  private String GOTO(String label) {
+    String s = new StringBuilder()
+      .append("@").append(fileName).append(".").append(label).append("\n")
+      .append("0;JMP\n")
+      .toString();
+    return s;
+  }
+
+  private String IFGOTO(String label) {
+    String s = new StringBuilder()
+      .append("@SP\n")
+      .append("AM=M-1\n")
+      .append("D=M\n")
+      .append("@").append(fileName).append(".").append(label).append("\n")
+      .append("D;JNE\n")
+      .toString();
+    return s;
+  }
+
   public Translator(String file) {
     fileName = file.replaceAll(".*/", "");
 		try {
@@ -199,6 +218,9 @@ class Translator {
         switch (parts[0]) {
           case "push": return parsePush(parts[1], parts[2]);
           case "pop": return parsePop(parts[1], parts[2]);
+          case "label": return "(" + fileName + "." + parts[1] + ")\n";
+          case "goto": return GOTO(parts[1]);
+          case "if-goto": return IFGOTO(parts[1]);
           default: throw new Exception("bad command!");
         }
       }
