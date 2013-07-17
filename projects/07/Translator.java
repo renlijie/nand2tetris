@@ -5,8 +5,10 @@ import java.util.Stack;
 
 class Translator {
   private BufferedReader br;
-  private String fileName;
-  private Stack<String> funcNames = new Stack<String>();
+  private String[] files;
+  private int fileIdx = 0;
+  private String currFileName;
+  private String funcName;
 
   private static final String ADD = new StringBuilder()
     .append("@SP\n")
@@ -154,7 +156,7 @@ class Translator {
 
   private String GOTO(String label) {
     String s = new StringBuilder()
-      .append("@").append(funcNames.peek()).append(".").append(label).append("\n")
+      .append("@").append(funcName).append("$").append(label).append("\n")
       .append("0;JMP\n")
       .toString();
     return s;
@@ -165,7 +167,7 @@ class Translator {
       .append("@SP\n")
       .append("AM=M-1\n")
       .append("D=M\n")
-      .append("@").append(funcNames.peek()).append(".").append(label).append("\n")
+      .append("@").append(funcName).append("$").append(label).append("\n")
       .append("D;JNE\n")
       .toString();
     return s;
@@ -173,7 +175,7 @@ class Translator {
 
   private String FUNCTION(String f, String k) {
     StringBuilder s = new StringBuilder()
-      .append("(Func.").append(f).append(")\n")
+      .append("(").append(f).append(")\n")
       .append("@SP\n")
       .append("A=M\n");
 
@@ -189,7 +191,7 @@ class Translator {
       .toString();
   }
 
-  private static final String CALL1 = new StringBuilder()
+  private static final String PRECALL = new StringBuilder()
       .append("D=A\n")
       .append("@SP\n")
       .append("A=M\n")
@@ -197,28 +199,28 @@ class Translator {
       .append("@SP\n")
       .append("M=M+1\n")
       .append("@LCL\n")
-      .append("D=A\n")
+      .append("D=M\n")
       .append("@SP\n")
       .append("A=M\n")
       .append("M=D\n")
       .append("@SP\n")
       .append("M=M+1\n")
       .append("@ARG\n")
-      .append("D=A\n")
+      .append("D=M\n")
       .append("@SP\n")
       .append("A=M\n")
       .append("M=D\n")
       .append("@SP\n")
       .append("M=M+1\n")
       .append("@THIS\n")
-      .append("D=A\n")
+      .append("D=M\n")
       .append("@SP\n")
       .append("A=M\n")
       .append("M=D\n")
       .append("@SP\n")
       .append("M=M+1\n")
       .append("@THAT\n")
-      .append("D=A\n")
+      .append("D=M\n")
       .append("@SP\n")
       .append("A=M\n")
       .append("M=D\n")
@@ -235,8 +237,8 @@ class Translator {
       .append("D=M\n")
       .append("@R13\n")
       .append("M=D\n")
-      .append("@RET").append(c).append("\n")
-      .append(CALL1)
+      .append("@RET.").append(c).append("\n")
+      .append(PRECALL)
       .append("@").append(n).append("\n")
       .append("D=D-A\n")
       .append("@ARG\n")
@@ -245,7 +247,7 @@ class Translator {
       .append("D=M\n")
       .append("@LCL\n")
       .append("M=D\n")
-      .append("@Func.").append(f).append("\n")
+      .append("@").append(f).append("\n")
       .append("0;JMP\n")
       .append("(RET.").append(c).append(")\n")
       .toString();
@@ -292,19 +294,14 @@ class Translator {
       .append("0;JMP\n")
       .toString();
 
-  public Translator(String file) {
-    fileName = file.replaceAll(".*/", "");
-    funcNames.push(fileName);
-		try {
-			br = new BufferedReader(new FileReader(file));
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
+  public Translator(String[] files) {
+    this.files = files;
     return;
   }
 
   private String parseNextCommand() throws Exception {
     String s = nextCommand();
+    System.out.println("//" + s);
     if (s == null)
       return null;
     switch (s) {
@@ -342,12 +339,12 @@ class Translator {
         switch (parts[0]) {
           case "push": return parsePush(parts[1], parts[2]);
           case "pop": return parsePop(parts[1], parts[2]);
-          case "label": return "(" + funcNames.peek() + "." + parts[1] + ")\n";
+          case "label": return "(" + funcName + "$" + parts[1] + ")\n";
           case "goto": return GOTO(parts[1]);
           case "if-goto": return IFGOTO(parts[1]);
-          case "function": { funcNames.push(parts[1]); return FUNCTION(parts[1], parts[2]); }
+          case "function": { funcName = parts[1]; return FUNCTION(parts[1], parts[2]); }
           case "call": return CALL(parts[1], parts[2]);
-          case "return": { funcNames.pop(); return RETURN; }
+          case "return": { return RETURN; }
           default: throw new Exception("bad command! " + parts[0]);
         }
       }
@@ -364,7 +361,7 @@ class Translator {
     switch (base) {
       case "static": {
         return new StringBuilder()
-          .append("@").append(fileName).append(".").append(idx).append("\n")
+          .append("@").append(currFileName).append(".").append(idx).append("\n")
           .append(suffix)
           .toString();
       }
@@ -428,7 +425,7 @@ class Translator {
     switch (base) {
       case "static": {
         return new StringBuilder()
-          .append("@").append(fileName).append(".").append(idx).append("\n")
+          .append("@").append(currFileName).append(".").append(idx).append("\n")
           .append(suffix)
           .toString();
       }
@@ -491,17 +488,36 @@ class Translator {
   }
 
   private String nextCommand() throws IOException {
+    if (br == null)
+      if (!open())
+        return null;
     String line;
     while(true) {
       line = br.readLine();
       if (line == null) {
         close();
-        return null;
+        br = null;
+        return nextCommand();
       }
       line = line.replaceAll("//.*", "").trim();
       if (line.length() == 0)
         continue;
       return line;
+    }
+  }
+
+  private boolean open() {
+    try {
+      if (br == null && fileIdx != files.length) {
+        br = new BufferedReader(new FileReader(files[fileIdx]));
+        currFileName = files[fileIdx].replaceAll(".*/", "");
+        fileIdx += 1;
+        return true;
+      } else
+        return false;
+    } catch (Exception e) {
+      e.printStackTrace();
+      return false;
     }
   }
 
@@ -514,8 +530,17 @@ class Translator {
     }
   }
 
-  public static void main(String args[]) {
-    Translator p = new Translator(args[0]);
+  public static void main(String files[]) {
+    Translator p = new Translator(files);
+    String init = new StringBuilder()
+      .append("@256\n")
+      .append("D=A\n")
+      .append("@SP\n")
+      .append("M=D\n")
+      .append(p.CALL("Sys.init", "0"))
+      .append("0;JMP\n")
+      .toString();
+    System.out.println(init);
     String s;
     try {
       while(true) {
