@@ -1,10 +1,12 @@
 import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.IOException;
+import java.util.Stack;
 
 class Translator {
   private BufferedReader br;
   private String fileName;
+  private Stack<String> funcNames = new Stack<String>();
 
   private static final String ADD = new StringBuilder()
     .append("@SP\n")
@@ -152,7 +154,7 @@ class Translator {
 
   private String GOTO(String label) {
     String s = new StringBuilder()
-      .append("@").append(fileName).append(".").append(label).append("\n")
+      .append("@").append(funcNames.peek()).append(".").append(label).append("\n")
       .append("0;JMP\n")
       .toString();
     return s;
@@ -163,14 +165,136 @@ class Translator {
       .append("@SP\n")
       .append("AM=M-1\n")
       .append("D=M\n")
-      .append("@").append(fileName).append(".").append(label).append("\n")
+      .append("@").append(funcNames.peek()).append(".").append(label).append("\n")
       .append("D;JNE\n")
       .toString();
     return s;
   }
 
+  private String FUNCTION(String f, String k) {
+    StringBuilder s = new StringBuilder()
+      .append("(Func.").append(f).append(")\n")
+      .append("@SP\n")
+      .append("A=M\n");
+
+    int kk = Integer.parseInt(k);
+    for (int i = 0; i < kk; i += 1) {
+      s.append("M=0\n")
+        .append("A=A+1\n");
+    }
+
+    return s.append("D=A\n")
+      .append("@SP\n")
+      .append("M=D\n")
+      .toString();
+  }
+
+  private static final String CALL1 = new StringBuilder()
+      .append("D=A\n")
+      .append("@SP\n")
+      .append("A=M\n")
+      .append("M=D\n")
+      .append("@SP\n")
+      .append("M=M+1\n")
+      .append("@LCL\n")
+      .append("D=A\n")
+      .append("@SP\n")
+      .append("A=M\n")
+      .append("M=D\n")
+      .append("@SP\n")
+      .append("M=M+1\n")
+      .append("@ARG\n")
+      .append("D=A\n")
+      .append("@SP\n")
+      .append("A=M\n")
+      .append("M=D\n")
+      .append("@SP\n")
+      .append("M=M+1\n")
+      .append("@THIS\n")
+      .append("D=A\n")
+      .append("@SP\n")
+      .append("A=M\n")
+      .append("M=D\n")
+      .append("@SP\n")
+      .append("M=M+1\n")
+      .append("@THAT\n")
+      .append("D=A\n")
+      .append("@SP\n")
+      .append("A=M\n")
+      .append("M=D\n")
+      .append("@SP\n")
+      .append("M=M+1\n")
+      .append("@R13\n")
+      .append("D=M\n")
+      .toString();
+
+  private String CALL(String f, String n) {
+    String c = nextCount();
+    return new StringBuilder()
+      .append("@SP\n")
+      .append("D=M\n")
+      .append("@R13\n")
+      .append("M=D\n")
+      .append("@RET").append(c).append("\n")
+      .append(CALL1)
+      .append("@").append(n).append("\n")
+      .append("D=D-A\n")
+      .append("@ARG\n")
+      .append("M=D\n")
+      .append("@SP\n")
+      .append("D=M\n")
+      .append("@LCL\n")
+      .append("M=D\n")
+      .append("@Func.").append(f).append("\n")
+      .append("0;JMP\n")
+      .append("(RET.").append(c).append(")\n")
+      .toString();
+  }
+
+  private static final String RETURN = new StringBuilder()
+      .append("@SP\n")
+      .append("A=M-1\n")
+      .append("D=M\n")
+      .append("@ARG\n")
+      .append("A=M\n")
+      .append("M=D \n")
+      .append("D=A+1\n")
+      .append("@SP\n")
+      .append("M=D\n")
+      .append("@LCL\n")
+      .append("AM=M-1\n")
+      .append("D=M\n")
+      .append("@THAT\n")
+      .append("M=D\n")
+      .append("@LCL\n")
+      .append("AM=M-1\n")
+      .append("D=M\n")
+      .append("@THIS\n")
+      .append("M=D\n")
+      .append("@LCL\n")
+      .append("AM=M-1\n")
+      .append("D=M\n")
+      .append("@ARG\n")
+      .append("M=D\n")
+      .append("@LCL\n")
+      .append("AM=M-1\n")
+      .append("A=A-1\n")
+      .append("D=M\n")
+      .append("@R13\n")
+      .append("M=D\n")
+      .append("@LCL\n")
+      .append("A=M\n")
+      .append("D=M\n")
+      .append("@LCL\n")
+      .append("M=D\n")
+      .append("@R13\n")
+      .append("A=M\n")
+      .append("0;JMP\n")
+      .toString();
+
   public Translator(String file) {
     fileName = file.replaceAll(".*/", "");
+    funcNames.push(fileName);
 		try {
 			br = new BufferedReader(new FileReader(file));
 		} catch (Exception e) {
@@ -218,10 +342,13 @@ class Translator {
         switch (parts[0]) {
           case "push": return parsePush(parts[1], parts[2]);
           case "pop": return parsePop(parts[1], parts[2]);
-          case "label": return "(" + fileName + "." + parts[1] + ")\n";
+          case "label": return "(" + funcNames.peek() + "." + parts[1] + ")\n";
           case "goto": return GOTO(parts[1]);
           case "if-goto": return IFGOTO(parts[1]);
-          default: throw new Exception("bad command!");
+          case "function": { funcNames.push(parts[1]); return FUNCTION(parts[1], parts[2]); }
+          case "call": return CALL(parts[1], parts[2]);
+          case "return": { funcNames.pop(); return RETURN; }
+          default: throw new Exception("bad command! " + parts[0]);
         }
       }
     }
