@@ -1,302 +1,153 @@
 import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.IOException;
-import java.util.Stack;
 
+// Translate virtual machine code (.vm) to assembly code (.asm).
 class Translator {
+  private static final String ADD =
+    "@SP\n" +
+    "AM=M-1\n" +
+    "D=M\n" +
+    "A=A-1\n" +
+    "M=D+M\n";
+
+  private static final String SUB =
+    "@SP\n" +
+    "AM=M-1\n" +
+    "D=M\n" +
+    "A=A-1\n" +
+    "M=M-D\n";
+
+  private static final String NEG =
+    "@SP\n" +
+    "A=M-1\n" +
+    "M=-M\n";
+
+  private static final String AND =
+    "@SP\n" +
+    "AM=M-1\n" +
+    "D=M\n" +
+    "A=A-1\n" +
+    "M=D&M\n";
+
+  private static final String OR =
+    "@SP\n" +
+    "AM=M-1\n" +
+    "D=M\n" +
+    "A=A-1\n" +
+    "M=D|M\n";
+
+  private static final String NOT =
+    "@SP\n" +
+    "A=M-1\n" +
+    "M=!M\n";
+
+  // push D -> *SP++
+  private static final String PUSH =
+    "@SP\n" +
+    "A=M\n" +
+    "M=D\n" +
+    "@SP\n" +
+    "M=M+1\n";
+
+  // pop *SP-- -> *D
+  private static final String POP =
+    "@R13\n" +
+    "M=D\n" +
+    "@SP\n" +
+    "AM=M-1\n" +
+    "D=M\n" +
+    "@R13\n" +
+    "A=M\n" +
+    "M=D\n";
+
+  private static final String RETURN =
+    // *(LCL - 5) -> R13
+    "@LCL\n" +
+    "D=M\n" +
+    "@5\n" +
+    "A=D-A\n" +
+    "D=M\n" +
+    "@R13\n" +
+    "M=D\n" +
+    // *(SP - 1) -> *ARG
+    "@SP\n" +
+    "A=M-1\n" +
+    "D=M\n" +
+    "@ARG\n" +
+    "A=M\n" +
+    "M=D \n" +
+    // ARG + 1 -> SP
+    "D=A+1\n" +
+    "@SP\n" +
+    "M=D\n" +
+    // *(LCL - 1) -> THAT; LCL--
+    "@LCL\n" +
+    "AM=M-1\n" +
+    "D=M\n" +
+    "@THAT\n" +
+    "M=D\n" +
+    // *(LCL - 1) -> THIS; LCL--
+    "@LCL\n" +
+    "AM=M-1\n" +
+    "D=M\n" +
+    "@THIS\n" +
+    "M=D\n" +
+    // *(LCL - 1) -> ARG; LCL--
+    "@LCL\n" +
+    "AM=M-1\n" +
+    "D=M\n" +
+    "@ARG\n" +
+    "M=D\n" +
+    // *(LCL - 1) -> LCL
+    "@LCL\n" +
+    "A=M-1\n" +
+    "D=M\n" +
+    "@LCL\n" +
+    "M=D\n" +
+    // R13 -> A
+    "@R13\n" +
+    "A=M\n" +
+    "0;JMP\n";
+
+  private static int count = 0;
+
   private BufferedReader br;
   private String[] files;
   private int fileIdx = 0;
   private String currFileName;
   private String funcName;
 
-  private static final String ADD = new StringBuilder()
-    .append("@SP\n")
-    .append("AM=M-1\n")
-    .append("D=M\n")
-    .append("A=A-1\n")
-    .append("M=D+M\n")
-    .toString();
-
-  private static final String SUB = new StringBuilder()
-    .append("@SP\n")
-    .append("AM=M-1\n")
-    .append("D=M\n")
-    .append("A=A-1\n")
-    .append("M=M-D\n")
-    .toString();
-
-  private static final String NEG = new StringBuilder()
-    .append("@SP\n")
-    .append("A=M-1\n")
-    .append("M=-M\n")
-    .toString();
-
-  private static final String AND = new StringBuilder()
-    .append("@SP\n")
-    .append("AM=M-1\n")
-    .append("D=M\n")
-    .append("A=A-1\n")
-    .append("M=D&M\n")
-    .toString();
-
-  private static final String OR = new StringBuilder()
-    .append("@SP\n")
-    .append("AM=M-1\n")
-    .append("D=M\n")
-    .append("A=A-1\n")
-    .append("M=D|M\n")
-    .toString();
-
-  private static final String NOT = new StringBuilder()
-    .append("@SP\n")
-    .append("A=M-1\n")
-    .append("M=!M\n")
-    .toString();
-
-  private static final String PUSH = new StringBuilder()
-    .append("D=A\n")
-    .append("@SP\n")
-    .append("A=M\n")
-    .append("M=D\n")
-    .append("@SP\n")
-    .append("M=M+1\n")
-    .toString();
-
-  private static final String POP = new StringBuilder()
-    .append("D=A\n")
-    .append("@R13\n")
-    .append("M=D\n")
-    .append("@SP\n")
-    .append("AM=M-1\n")
-    .append("D=M\n")
-    .append("@R13\n")
-    .append("A=M\n")
-    .append("M=D\n")
-    .toString();
-
-  private static int count = 0;
+  public Translator(String[] files) {
+    for (String file : files) {
+      System.err.println("file: " + file);
+    }
+    this.files = files;
+    return;
+  }
 
   private String nextCount() {
     count += 1;
     return Integer.toString(count);
   }
 
-  private String EQ() {
-    String n = nextCount();
-    String s = new StringBuilder()
-      .append("@SP\n")
-      .append("AM=M-1\n")
-      .append("D=M\n")
-      .append("A=A-1\n")
-      .append("D=M-D\n")
-      .append("@EQTrue").append(n)
-      .append("\nD;JEQ\n")
-      .append("@SP\n")
-      .append("A=M-1\n")
-      .append("M=0\n")
-      .append("@EQAfter").append(n)
-      .append("\n0;JMP\n")
-      .append("(EQTrue").append(n).append(")\n")
-      .append("@SP\n")
-      .append("A=M-1\n")
-      .append("M=-1\n")
-      .append("(EQAfter").append(n).append(")\n")
-      .toString();
-    return s;
-  }
-
-  private String GT() {
-    String n = nextCount();
-    String s = new StringBuilder()
-      .append("@SP\n")
-      .append("AM=M-1\n")
-      .append("D=M\n")
-      .append("A=A-1\n")
-      .append("D=M-D\n")
-      .append("@GTTrue").append(n)
-      .append("\nD;JGT\n")
-      .append("@SP\n")
-      .append("A=M-1\n")
-      .append("M=0\n")
-      .append("@GTAfter").append(n)
-      .append("\n0;JMP\n")
-      .append("(GTTrue").append(n).append(")\n")
-      .append("@SP\n")
-      .append("A=M-1\n")
-      .append("M=-1\n")
-      .append("(GTAfter").append(n).append(")\n")
-      .toString();
-    return s;
-  }
-
-  private String LT() {
-    String n = nextCount();
-    String s = new StringBuilder()
-      .append("@SP\n")
-      .append("AM=M-1\n")
-      .append("D=M\n")
-      .append("A=A-1\n")
-      .append("D=M-D\n")
-      .append("@LTTrue").append(n)
-      .append("\nD;JLT\n")
-      .append("@SP\n")
-      .append("A=M-1\n")
-      .append("M=0\n")
-      .append("@LTAfter").append(n)
-      .append("\n0;JMP\n")
-      .append("(LTTrue").append(n).append(")\n")
-      .append("@SP\n")
-      .append("A=M-1\n")
-      .append("M=-1\n")
-      .append("(LTAfter").append(n).append(")\n")
-      .toString();
-    return s;
-  }
-
-  private String GOTO(String label) {
-    String s = new StringBuilder()
-      .append("@").append(funcName).append("$").append(label).append("\n")
-      .append("0;JMP\n")
-      .toString();
-    return s;
-  }
-
-  private String IFGOTO(String label) {
-    String s = new StringBuilder()
-      .append("@SP\n")
-      .append("AM=M-1\n")
-      .append("D=M\n")
-      .append("@").append(funcName).append("$").append(label).append("\n")
-      .append("D;JNE\n")
-      .toString();
-    return s;
-  }
-
-  private String FUNCTION(String f, String k) {
-    StringBuilder s = new StringBuilder()
-      .append("(").append(f).append(")\n")
-      .append("@SP\n")
-      .append("A=M\n");
-
-    int kk = Integer.parseInt(k);
-    for (int i = 0; i < kk; i += 1) {
-      s.append("M=0\n")
-        .append("A=A+1\n");
+  private String nextCommand() throws IOException {
+    if (br == null)
+      if (!open())
+        return null;
+    String line;
+    while(true) {
+      line = br.readLine();
+      if (line == null) {
+        close();
+        br = null;
+        return nextCommand();
+      }
+      line = line.replaceAll("//.*", "").trim();
+      if (line.length() == 0)
+        continue;
+      return line;
     }
-
-    return s.append("D=A\n")
-      .append("@SP\n")
-      .append("M=D\n")
-      .toString();
-  }
-
-  private static final String PRECALL = new StringBuilder()
-      .append("D=A\n")
-      .append("@SP\n")
-      .append("A=M\n")
-      .append("M=D\n")
-      .append("@SP\n")
-      .append("M=M+1\n")
-      .append("@LCL\n")
-      .append("D=M\n")
-      .append("@SP\n")
-      .append("A=M\n")
-      .append("M=D\n")
-      .append("@SP\n")
-      .append("M=M+1\n")
-      .append("@ARG\n")
-      .append("D=M\n")
-      .append("@SP\n")
-      .append("A=M\n")
-      .append("M=D\n")
-      .append("@SP\n")
-      .append("M=M+1\n")
-      .append("@THIS\n")
-      .append("D=M\n")
-      .append("@SP\n")
-      .append("A=M\n")
-      .append("M=D\n")
-      .append("@SP\n")
-      .append("M=M+1\n")
-      .append("@THAT\n")
-      .append("D=M\n")
-      .append("@SP\n")
-      .append("A=M\n")
-      .append("M=D\n")
-      .append("@SP\n")
-      .append("M=M+1\n")
-      .append("@R13\n")
-      .append("D=M\n")
-      .toString();
-
-  private String CALL(String f, String n) {
-    String c = nextCount();
-    return new StringBuilder()
-      .append("@SP\n")
-      .append("D=M\n")
-      .append("@R13\n")
-      .append("M=D\n")
-      .append("@RET.").append(c).append("\n")
-      .append(PRECALL)
-      .append("@").append(n).append("\n")
-      .append("D=D-A\n")
-      .append("@ARG\n")
-      .append("M=D\n")
-      .append("@SP\n")
-      .append("D=M\n")
-      .append("@LCL\n")
-      .append("M=D\n")
-      .append("@").append(f).append("\n")
-      .append("0;JMP\n")
-      .append("(RET.").append(c).append(")\n")
-      .toString();
-  }
-
-  private static final String RETURN = new StringBuilder()
-      .append("@SP\n")
-      .append("A=M-1\n")
-      .append("D=M\n")
-      .append("@ARG\n")
-      .append("A=M\n")
-      .append("M=D \n")
-      .append("D=A+1\n")
-      .append("@SP\n")
-      .append("M=D\n")
-      .append("@LCL\n")
-      .append("AM=M-1\n")
-      .append("D=M\n")
-      .append("@THAT\n")
-      .append("M=D\n")
-      .append("@LCL\n")
-      .append("AM=M-1\n")
-      .append("D=M\n")
-      .append("@THIS\n")
-      .append("M=D\n")
-      .append("@LCL\n")
-      .append("AM=M-1\n")
-      .append("D=M\n")
-      .append("@ARG\n")
-      .append("M=D\n")
-      .append("@LCL\n")
-      .append("AM=M-1\n")
-      .append("A=A-1\n")
-      .append("D=M\n")
-      .append("@R13\n")
-      .append("M=D\n")
-      .append("@LCL\n")
-      .append("A=M\n")
-      .append("D=M\n")
-      .append("@LCL\n")
-      .append("M=D\n")
-      .append("@R13\n")
-      .append("A=M\n")
-      .append("0;JMP\n")
-      .toString();
-
-  public Translator(String[] files) {
-    this.files = files;
-    return;
   }
 
   private String parseNextCommand() throws Exception {
@@ -351,158 +202,142 @@ class Translator {
     }
   }
 
-  private String parsePop(String base, String idx) throws Exception{
-    String suffix = new StringBuilder()
-          .append("D=M\n")
-          .append("@").append(idx).append("\n")
-          .append("A=D+A\n")
-          .append(POP)
-          .toString();
+  private String parsePop(String base, String idx) throws Exception {
     switch (base) {
-      case "static": {
-        return new StringBuilder()
-          .append("@").append(currFileName).append(".").append(idx).append("\n")
-          .append(suffix)
-          .toString();
-      }
       case "local": {
-        return new StringBuilder()
-          .append("@LCL\n")
-          .append(suffix)
-          .toString();
+        return
+          "@LCL\n" +
+          "D=M\n" +
+          "@" + idx + "\n" +
+          "D=D+A\n" +
+          POP;
       }
       case "argument": {
-        return new StringBuilder()
-          .append("@ARG\n")
-          .append(suffix)
-          .toString();
+        return
+          "@ARG\n" +
+          "D=M\n" +
+          "@" + idx + "\n" +
+          "D=D+A\n" +
+          POP;
       }
       case "this": {
-        return new StringBuilder()
-          .append("@THIS\n")
-          .append(suffix)
-          .toString();
+        return
+          "@THIS\n" +
+          "D=M\n" +
+          "@" + idx + "\n" +
+          "D=D+A\n" +
+          POP;
       }
       case "that": {
-        return new StringBuilder()
-          .append("@THAT\n")
-          .append(suffix)
-          .toString();
+        return
+          "@THAT\n" +
+          "D=M\n" +
+          "@" + idx + "\n" +
+          "D=D+A\n" +
+          POP;
       }
       case "pointer": {
         if (idx.equals("0"))
-          return new StringBuilder()
-            .append("@THIS\n")
-            .append(POP)
-            .toString();
+          return
+            "@THIS\n" +
+            "D=A\n" +
+            POP;
         else
-          return new StringBuilder()
-            .append("@THAT\n")
-            .append(POP)
-            .toString();
+          return
+            "@THAT\n" +
+            "D=A\n" +
+            POP;
+      }
+      case "static": {
+        return
+          "@" + currFileName + "." + idx + "\n" +
+          "D=A\n" +
+          POP;
       }
       case "temp": {
-        return new StringBuilder()
-          .append("@R5\n")
-          .append("D=A\n")
-          .append("@").append(idx).append("\n")
-          .append("A=D+A\n")
-          .append(POP)
-          .toString();
+        return
+          "@R5\n" +
+          "D=A\n" +
+          "@" + idx + "\n" +
+          "D=D+A\n" +
+          POP;
       }
       default: throw new Exception("bad command!");
     }
   }
 
-  private String parsePush(String base, String idx) throws Exception{
-    String suffix = new StringBuilder()
-          .append("D=M\n")
-          .append("@").append(idx).append("\n")
-          .append("A=D+A\n")
-          .append("A=M\n")
-          .append(PUSH)
-          .toString();
+  private String parsePush(String base, String idx) throws Exception {
     switch (base) {
-      case "static": {
-        return new StringBuilder()
-          .append("@").append(currFileName).append(".").append(idx).append("\n")
-          .append(suffix)
-          .toString();
+      case "local": {
+        return
+          "@LCL\n" +
+          "D=M\n" +
+          "@" + idx + "\n" +
+          "A=D+A\n" +
+          "D=M\n" +
+          PUSH;
+      }
+      case "argument": {
+        return
+          "@ARG\n" +
+          "D=M\n" +
+          "@" + idx + "\n" +
+          "A=D+A\n" +
+          "D=M\n" +
+          PUSH;
+      }
+      case "this": {
+        return
+          "@THIS\n" +
+          "D=M\n" +
+          "@" + idx + "\n" +
+          "A=D+A\n" +
+          "D=M\n" +
+          PUSH;
+      }
+      case "that": {
+        return
+          "@THAT\n" +
+          "D=M\n" +
+          "@" + idx + "\n" +
+          "A=D+A\n" +
+          "D=M\n" +
+          PUSH;
+      }
+      case "pointer": {
+        if (idx.equals("0"))
+          return
+            "@THIS\n" +
+            "D=M\n" +
+            PUSH;
+        else
+          return
+            "@THAT\n" +
+            "D=M\n" +
+            PUSH;
       }
       case "constant": {
-        return new StringBuilder()
-          .append("@").append(idx).append("\n")
-          .append(PUSH)
-          .toString();
+        return
+          "@" + idx + "\n" +
+          "D=A\n" +
+          PUSH;
       }
-      case "local": {
-        return new StringBuilder()
-          .append("@LCL\n")
-          .append(suffix)
-          .toString();
-      }
-      case "argument": {
-        return new StringBuilder()
-          .append("@ARG\n")
-          .append(suffix)
-          .toString();
-      }
-      case "this": {
-        return new StringBuilder()
-          .append("@THIS\n")
-          .append(suffix)
-          .toString();
-      }
-      case "that": {
-        return new StringBuilder()
-          .append("@THAT\n")
-          .append(suffix)
-          .toString();
-      }
-      case "pointer": {
-        if (idx.equals("0"))
-          return new StringBuilder()
-            .append("@THIS\n")
-            .append("A=M\n")
-            .append(PUSH)
-            .toString();
-        else
-          return new StringBuilder()
-            .append("@THAT\n")
-            .append("A=M\n")
-            .append(PUSH)
-            .toString();
+      case "static": {
+        return
+          "@" + currFileName + "." + idx + "\n" +
+          "D=M\n" +
+          PUSH;
       }
       case "temp": {
-        return new StringBuilder()
-          .append("@R5\n")
-          .append("D=A\n")
-          .append("@").append(idx).append("\n")
-          .append("A=D+A\n")
-          .append("A=M\n")
-          .append(PUSH)
-          .toString();
+        return
+          "@R5\n" +
+          "D=A\n" +
+          "@" + idx + "\n" +
+          "A=D+A\n" +
+          "D=M\n" +
+          PUSH;
       }
       default: throw new Exception("bad command!");
-    }
-  }
-
-  private String nextCommand() throws IOException {
-    if (br == null)
-      if (!open())
-        return null;
-    String line;
-    while(true) {
-      line = br.readLine();
-      if (line == null) {
-        close();
-        br = null;
-        return nextCommand();
-      }
-      line = line.replaceAll("//.*", "").trim();
-      if (line.length() == 0)
-        continue;
-      return line;
     }
   }
 
@@ -530,16 +365,193 @@ class Translator {
     }
   }
 
+  private String EQ() {
+    String n = nextCount();
+    String s =
+      "@SP\n" +
+      "AM=M-1\n" +
+      "D=M\n" +
+      "A=A-1\n" +
+      "D=M-D\n" +
+      "@EQ.true." + n + "\n" +
+      "D;JEQ\n" +
+      "@SP\n" +
+      "A=M-1\n" +
+      "M=0\n" +
+      "@EQ.after." + n + "\n" +
+      "0;JMP\n" +
+      "(EQ.true." + n + ")\n" +
+      "@SP\n" +
+      "A=M-1\n" +
+      "M=-1\n" +
+      "(EQ.after." + n + ")\n";
+    return s;
+  }
+
+  private String GT() {
+    String n = nextCount();
+    String s =
+      "@SP\n" +
+      "AM=M-1\n" +
+      "D=M\n" +
+      "A=A-1\n" +
+      "D=M-D\n" +
+      "@GT.true." + n + "\n" +
+      "\nD;JGT\n" +
+      "@SP\n" +
+      "A=M-1\n" +
+      "M=0\n" +
+      "@GT.after." + n + "\n" +
+      "0;JMP\n" +
+      "(GT.true." + n + ")\n" +
+      "@SP\n" +
+      "A=M-1\n" +
+      "M=-1\n" +
+      "(GT.after." + n + ")\n";
+    return s;
+  }
+
+  private String LT() {
+    String n = nextCount();
+    String s =
+      "@SP\n" +
+      "AM=M-1\n" +
+      "D=M\n" +
+      "A=A-1\n" +
+      "D=M-D\n" +
+      "@LT.true." + n + "\n" +
+      "D;JLT\n" +
+      "@SP\n" +
+      "A=M-1\n" +
+      "M=0\n" +
+      "@LT.after." + n + "\n" +
+      "0;JMP\n" +
+      "(LT.true." + n + ")\n" +
+      "@SP\n" +
+      "A=M-1\n" +
+      "M=-1\n" +
+      "(LT.after." + n + ")\n";
+    return s;
+  }
+
+  private String GOTO(String label) {
+    String s =
+      "@" + funcName + "$" + label + "\n" +
+      "0;JMP\n";
+    return s;
+  }
+
+  private String IFGOTO(String label) {
+    String s =
+      "@SP\n" +
+      "AM=M-1\n" +
+      "D=M\n" +
+      "@" + funcName + "$" + label + "\n" +
+      "D;JNE\n";
+    return s;
+  }
+
+  private String FUNCTION(String f, String k) {
+    String s =
+      "(" + f + ")\n" +
+      "@SP\n" +
+      "A=M\n";
+    int kk = Integer.parseInt(k);
+    for (int i = 0; i < kk; i += 1) {
+      s +=
+        "M=0\n" +
+        "A=A+1\n";
+    }
+    return s +
+      "D=A\n" +
+      "@SP\n" +
+      "M=D\n";
+  }
+
+  private String CALL(String f, String n) {
+    String c = nextCount();
+    return
+      // SP -> R13
+      "@SP\n" +
+      "D=M\n" +
+      "@R13\n" +
+      "M=D\n" +
+      // @RET -> *SP
+      "@RET." + c + "\n" +
+      "D=A\n" +
+      "@SP\n" +
+      "A=M\n" +
+      "M=D\n" +
+      // SP++
+      "@SP\n" +
+      "M=M+1\n" +
+      // LCL -> *SP
+      "@LCL\n" +
+      "D=M\n" +
+      "@SP\n" +
+      "A=M\n" +
+      "M=D\n" +
+      // SP++
+      "@SP\n" +
+      "M=M+1\n" +
+      // ARG -> *SP
+      "@ARG\n" +
+      "D=M\n" +
+      "@SP\n" +
+      "A=M\n" +
+      "M=D\n" +
+      // SP++
+      "@SP\n" +
+      "M=M+1\n" +
+      // THIS -> *SP
+      "@THIS\n" +
+      "D=M\n" +
+      "@SP\n" +
+      "A=M\n" +
+      "M=D\n" +
+      // SP++
+      "@SP\n" +
+      "M=M+1\n" +
+      // THAT -> *SP
+      "@THAT\n" +
+      "D=M\n" +
+      "@SP\n" +
+      "A=M\n" +
+      "M=D\n" +
+      // SP++
+      "@SP\n" +
+      "M=M+1\n" +
+      // R13 - n -> ARG
+      "@R13\n" +
+      "D=M\n" +
+      "@" + n + "\n" +
+      "D=D-A\n" +
+      "@ARG\n" +
+      "M=D\n" +
+      // SP -> LCL
+      "@SP\n" +
+      "D=M\n" +
+      "@LCL\n" +
+      "M=D\n" +
+      "@" + f + "\n" +
+      "0;JMP\n" +
+      "(RET." + c + ")\n";
+  }
+
   public static void main(String files[]) {
+    if (files.length == 0) {
+      System.err.println("no input files");
+      return;
+    }
     Translator p = new Translator(files);
-    String init = new StringBuilder()
-      .append("@256\n")
-      .append("D=A\n")
-      .append("@SP\n")
-      .append("M=D\n")
-      .append(p.CALL("Sys.init", "0"))
-      .append("0;JMP\n")
-      .toString();
+    String init =
+      "@256\n" +
+      "D=A\n" +
+      "@SP\n" +
+      "M=D\n" +
+      "// call Sys.init 0\n" +
+      p.CALL("Sys.init", "0") +
+      "0;JMP\n";
     System.out.println(init);
     String s;
     try {

@@ -2,17 +2,18 @@ import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.IOException;
 import java.util.HashMap;
+import java.util.Map;
 
+// Parse assembly code (.asm) to machine binary code.
 class Parser {
-  static char A_COMMAND = 0;
-  static char C_COMMAND = 1;
-  static char L_COMMAND = 2;
+  private static final char A_COMMAND = 0;
+  private static final char C_COMMAND = 1;
+  private static final char L_COMMAND = 2;
 
-  HashMap symbols = new HashMap<String, Integer>(50);
-  int currentSymbolAddress = 16;
-  int currentCodeLine = 0;
-
+  private Map<String, Integer> symbols = new HashMap<String, Integer>(50);
   private BufferedReader br;
+  private int currentSymbolAddress = 16;
+  private int currentCodeLine = 0;
 
   public Parser(String file) {
 		try {
@@ -50,11 +51,12 @@ class Parser {
     return;
   }
 
-  public void firstPass() throws Exception {
+  private void firstPass() throws Exception {
     String s = nextCommand();
     while(s != null) {
       if (commandType(s) == L_COMMAND) {
-        symbols.put(s.substring(1, s.length() - 1), currentCodeLine);
+        if (symbols.put(s.substring(1, s.length() - 1), currentCodeLine) != null)
+          throw new Exception("symbol " + s.substring(1, s.length() - 1) + " defined multiple times!");
       } else
         currentCodeLine += 1;
       s = nextCommand();
@@ -62,30 +64,7 @@ class Parser {
     return;
   }
 
-  public String parseNextCommand() throws Exception {
-    String s = nextCommand();
-    while(s != null && commandType(s) == L_COMMAND)
-      s = nextCommand();
-    if (s == null)
-      return null;
-    if (commandType(s) == A_COMMAND) {
-      s = s.substring(1);
-      if (s.charAt(0) < '0' || s.charAt(0) > '9') {
-        Integer addr = (Integer) symbols.get(s);
-        if (addr == null) {
-          addr = currentSymbolAddress;
-          symbols.put(s, addr);
-          currentSymbolAddress += 1;
-        }
-        return String.format("%16s", Integer.toBinaryString(addr)).replace(' ', '0');
-      } else
-        return String.format("%16s", Integer.toBinaryString(Integer.parseInt(s))).replace(' ', '0');
-    }
-    int raw = 0b1110000000000000 + (comp(s) << 6) + (dest(s) << 3) + jump(s);
-    return String.format("%16s", Integer.toBinaryString(raw)).replace(' ', '0');
-  }
-
-  public String nextCommand() throws IOException {
+  private String nextCommand() throws IOException {
     String line;
     while(true) {
       line = br.readLine();
@@ -101,7 +80,7 @@ class Parser {
     }
   }
 
-  public char commandType(String command) {
+  private char commandType(String command) {
     if (command.charAt(0) == '@')
       return A_COMMAND;
     if (command.charAt(0) == '(')
@@ -110,7 +89,7 @@ class Parser {
   }
 
   // 3 bit: toA, toD, toM
-  public char dest(String command) {
+  private char dest(String command) {
     if (command.indexOf('=') == -1)
       return 0;
     String lhs = command.replaceAll("=.*", "");
@@ -124,7 +103,7 @@ class Parser {
     return res;
   }
 
-  public char comp(String command) throws Exception {
+  private char comp(String command) throws Exception {
     String s = command.replaceAll(".*=", "");
     s = s.replaceAll(";.*", "");
     switch (s) {
@@ -161,7 +140,7 @@ class Parser {
     }
   }
 
-  public char jump(String command) {
+  private char jump(String command) {
     if (command.indexOf(';') == -1)
       return 0;
     String rhs = command.replaceAll(".*;", "");
@@ -186,7 +165,34 @@ class Parser {
     }
   }
 
+  public String parseNextCommand() throws Exception {
+    String s = nextCommand();
+    while(s != null && commandType(s) == L_COMMAND)
+      s = nextCommand();
+    if (s == null)
+      return null;
+    if (commandType(s) == A_COMMAND) {
+      s = s.substring(1);
+      if (s.charAt(0) < '0' || s.charAt(0) > '9') {
+        Integer addr = (Integer) symbols.get(s);
+        if (addr == null) {
+          addr = currentSymbolAddress;
+          symbols.put(s, addr);
+          currentSymbolAddress += 1;
+        }
+        return String.format("%16s", Integer.toBinaryString(addr)).replace(' ', '0');
+      } else
+        return String.format("%16s", Integer.toBinaryString(Integer.parseInt(s))).replace(' ', '0');
+    }
+    int raw = 0b1110000000000000 + (comp(s) << 6) + (dest(s) << 3) + jump(s);
+    return String.format("%16s", Integer.toBinaryString(raw)).replace(' ', '0');
+  }
+
   public static void main(String args[]) {
+    if (args.length == 0) {
+      System.err.println("no input file");
+      return;
+    }
     Parser p = new Parser(args[0]);
     String s;
     try {
